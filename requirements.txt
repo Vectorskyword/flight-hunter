@@ -1,0 +1,7 @@
+amadeus==11.0.0
+python-dotenv==1.0.1
+rich==13.7.1
+click==8.1.7
+# Optionnel - pour l'évolution vers un agent LangChain :
+# langchain==0.2.0
+# langchain-anthropic==0.1.15
