@@ -1,7 +1,15 @@
+# Core
 google-search-results==2.4.2
 python-dotenv==1.0.1
-rich==13.7.1
+
+# CLI
 click==8.1.7
-# Optionnel - pour l'évolution vers un agent LangChain :
+rich==13.7.1
+
+# Web app
+streamlit==1.40.0
+pandas==2.2.3
+
+# Optionnel - évolution vers agent LangChain :
 # langchain==0.2.0
 # langchain-anthropic==0.1.15
