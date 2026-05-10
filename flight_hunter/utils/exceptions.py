@@ -10,7 +10,7 @@ class FlightHunterError(Exception):
 
 
 class APIConfigurationError(FlightHunterError):
-    """Clés API manquantes, invalides ou expirées."""
+    """Clé API manquante, invalide ou expirée."""
 
 
 class APIRateLimitError(FlightHunterError):

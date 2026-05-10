@@ -1,6 +1,9 @@
 """
 Mise en forme des résultats de vols pour l'affichage CLI.
 Utilise la bibliothèque `rich` pour un rendu propre dans le terminal.
+
+Format des données : SerpApi (Google Flights).
+Documentation : https://serpapi.com/google-flights-api
 """
 from __future__ import annotations
 
@@ -14,54 +17,58 @@ from rich.table import Table
 console = Console()
 
 
-def _format_iso_datetime(iso_str: str) -> str:
-    """'2025-12-15T08:30:00' -> '15/12/2025 08:30'"""
+def _format_datetime(dt_str: str) -> str:
+    """'2026-06-15 08:30' -> '15/06/2026 08:30'"""
     try:
-        dt = datetime.fromisoformat(iso_str)
+        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
         return dt.strftime("%d/%m/%Y %H:%M")
-    except ValueError:
-        return iso_str
+    except (ValueError, TypeError):
+        return dt_str or "—"
 
 
-def _format_duration(iso_duration: str) -> str:
-    """'PT11H30M' -> '11h30'"""
-    if not iso_duration.startswith("PT"):
-        return iso_duration
-    txt = iso_duration[2:].lower().replace("h", "h").replace("m", "")
-    return txt or iso_duration
+def _format_duration(minutes: int) -> str:
+    """600 (minutes) -> '10h00'"""
+    if not minutes:
+        return "—"
+    h, m = divmod(int(minutes), 60)
+    return f"{h}h{m:02d}"
 
 
 def parse_offer(offer: dict) -> dict:
-    """Extrait les infos clés d'une offre brute Amadeus."""
-    price = offer["price"]
-    itineraries = offer["itineraries"]
+    """
+    Extrait les infos clés d'une offre SerpApi (Google Flights).
 
-    # Premier segment de l'aller (pour la compagnie principale)
-    first_segment = itineraries[0]["segments"][0]
-    last_segment_outbound = itineraries[0]["segments"][-1]
+    Une offre contient une liste de "flights" (segments).
+    On prend l'aéroport de départ du premier segment et l'aéroport
+    d'arrivée du dernier segment.
+    """
+    flights = offer.get("flights", [])
+    if not flights:
+        return {
+            "price_total": 0, "carrier": "?", "flight_number": "?",
+            "departure_airport": "?", "departure_time": "—",
+            "arrival_airport": "?", "arrival_time": "—",
+            "duration": "—", "stops": 0, "type": "—",
+        }
 
-    parsed = {
-        "price_total": float(price["total"]),
-        "currency": price["currency"],
-        "carrier": first_segment["carrierCode"],
-        "flight_number": f"{first_segment['carrierCode']}{first_segment['number']}",
-        "departure_airport": first_segment["departure"]["iataCode"],
-        "departure_time": _format_iso_datetime(first_segment["departure"]["at"]),
-        "arrival_airport": last_segment_outbound["arrival"]["iataCode"],
-        "arrival_time": _format_iso_datetime(last_segment_outbound["arrival"]["at"]),
-        "duration_outbound": _format_duration(itineraries[0]["duration"]),
-        "stops_outbound": len(itineraries[0]["segments"]) - 1,
-        "has_return": len(itineraries) > 1,
+    first = flights[0]
+    last = flights[-1]
+
+    return {
+        "price_total": float(offer.get("price", 0)),
+        "carrier": first.get("airline", "—"),
+        "flight_number": first.get("flight_number", "—"),
+        "departure_airport": first.get("departure_airport", {}).get("id", "—"),
+        "departure_time": _format_datetime(first.get("departure_airport", {}).get("time", "")),
+        "arrival_airport": last.get("arrival_airport", {}).get("id", "—"),
+        "arrival_time": _format_datetime(last.get("arrival_airport", {}).get("time", "")),
+        "duration": _format_duration(offer.get("total_duration", 0)),
+        "stops": max(0, len(flights) - 1),
+        "type": offer.get("type", "—"),
     }
 
-    if parsed["has_return"]:
-        parsed["duration_return"] = _format_duration(itineraries[1]["duration"])
-        parsed["stops_return"] = len(itineraries[1]["segments"]) - 1
 
-    return parsed
-
-
-def display_offers(offers: List[dict], origin: str, destination: str) -> None:
+def display_offers(offers: List[dict], origin: str, destination: str, currency: str = "EUR") -> None:
     """Affiche un tableau récapitulatif des offres triées par prix croissant."""
     table = Table(
         title=f"✈️  Meilleures offres : {origin} → {destination}",
@@ -76,20 +83,20 @@ def display_offers(offers: List[dict], origin: str, destination: str) -> None:
     table.add_column("Arrivée", justify="left")
     table.add_column("Durée", justify="center")
     table.add_column("Escales", justify="center")
-    table.add_column("AR ?", justify="center")
+    table.add_column("Type", justify="center")
 
     for idx, offer in enumerate(offers, start=1):
         info = parse_offer(offer)
         table.add_row(
             str(idx),
-            f"{info['price_total']:.2f} {info['currency']}",
+            f"{info['price_total']:.2f} {currency}",
             info["carrier"],
             info["flight_number"],
             f"{info['departure_airport']}\n{info['departure_time']}",
             f"{info['arrival_airport']}\n{info['arrival_time']}",
-            info["duration_outbound"],
-            str(info["stops_outbound"]) if info["stops_outbound"] else "Direct",
-            "✓" if info["has_return"] else "—",
+            info["duration"],
+            "Direct" if info["stops"] == 0 else str(info["stops"]),
+            info["type"],
         )
 
     console.print(table)
@@ -103,3 +110,8 @@ def display_error(message: str) -> None:
 def display_info(message: str) -> None:
     """Affiche une info en bleu."""
     console.print(f"[bold blue]ℹ️  {message}[/bold blue]")
+
+
+def display_success(message: str) -> None:
+    """Affiche un succès en vert."""
+    console.print(f"[bold green]✅ {message}[/bold green]")

@@ -16,7 +16,7 @@ from datetime import date
 from typing import List, Optional
 
 from flight_hunter.config.settings import Settings
-from flight_hunter.services.amadeus_client import AmadeusClient
+from flight_hunter.services.serpapi_client import SerpApiClient
 
 
 @dataclass
@@ -59,17 +59,23 @@ class FlightSearchRequest:
 
 class FlightAgent:
     """
-    Agent en charge de la recherche de vols.
+    Agent en charge de la recherche de vols via SerpApi (Google Flights).
 
     Pipeline :
         1) Résolution des codes IATA depuis les noms de villes
         2) Appel à l'API de recherche d'offres
         3) Tri par prix croissant
-        4) Renvoi des résultats bruts (mise en forme déléguée à formatter.py)
+        4) Renvoi des résultats normalisés
     """
 
     def __init__(self, settings: Settings) -> None:
-        self._client = AmadeusClient(settings)
+        self._client = SerpApiClient(settings)
+        self._settings = settings
+
+    @property
+    def currency(self) -> str:
+        """Devise utilisée pour l'affichage."""
+        return self._settings.default_currency
 
     # ------------------------------------------------------------------ #
     # Méthode principale exposée à la CLI / future UI                    #
@@ -90,8 +96,7 @@ class FlightAgent:
             non_stop=request.non_stop,
         )
 
-        # Le client trie déjà, mais on s'assure du tri ici (single source of truth)
-        offers.sort(key=lambda o: float(o["price"]["total"]))
+        offers.sort(key=lambda o: float(o.get("price", float("inf"))))
         return offers
 
     # ------------------------------------------------------------------ #
